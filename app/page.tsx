@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 type Language = "he" | "en";
 type Theme = "azure" | "turquoise" | "emerald" | "violet" | "raspberry" | "sunset";
 type Status = "idle" | "running" | "waiting" | "alarm" | "stopped";
+type HistoryPoint = { value: number; over: boolean };
 
 const themes: Theme[] = ["azure", "turquoise", "emerald", "violet", "raspberry", "sunset"];
 const themeNames: Record<Language, Record<Theme, string>> = {
@@ -129,10 +130,11 @@ export default function Home() {
   const [average, setAverage] = useState<number | null>(null);
   const [peak, setPeak] = useState<number | null>(null);
   const [overSeconds, setOverSeconds] = useState(0);
-  const [threshold, setThreshold] = useState(75);
-  const [duration, setDuration] = useState(2);
+  const [history, setHistory] = useState<HistoryPoint[]>([]);
+  const [threshold, setThreshold] = useState(85);
+  const [duration, setDuration] = useState(0.5);
   const [cooldown, setCooldown] = useState(5);
-  const [calibration, setCalibration] = useState(100);
+  const [calibration, setCalibration] = useState(65);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [vibrationEnabled, setVibrationEnabled] = useState(true);
   const [error, setError] = useState("");
@@ -152,11 +154,12 @@ export default function Home() {
   const lastFrameRef = useRef(0);
   const lastAlarmRef = useRef(-Infinity);
   const alarmPlayingRef = useRef(false);
+  const lastHistorySampleRef = useRef(0);
 
   useEffect(() => {
     setTheme(loadTheme());
     try {
-      const saved = JSON.parse(localStorage.getItem("amis-noise-settings-v1") || "{}");
+      const saved = JSON.parse(localStorage.getItem("amis-noise-settings-v2") || "{}");
       if (Number.isFinite(saved.threshold)) setThreshold(saved.threshold);
       if (Number.isFinite(saved.duration)) setDuration(saved.duration);
       if (Number.isFinite(saved.cooldown)) setCooldown(saved.cooldown);
@@ -175,7 +178,7 @@ export default function Home() {
   useEffect(() => {
     document.documentElement.lang = language;
     document.documentElement.dir = language === "he" ? "rtl" : "ltr";
-    localStorage.setItem("amis-noise-settings-v1", JSON.stringify({ threshold, duration, cooldown, calibration, soundEnabled, vibrationEnabled, language }));
+    localStorage.setItem("amis-noise-settings-v2", JSON.stringify({ threshold, duration, cooldown, calibration, soundEnabled, vibrationEnabled, language }));
   }, [language, threshold, duration, cooldown, calibration, soundEnabled, vibrationEnabled]);
 
   const triggerAlarm = useCallback(async () => {
@@ -249,6 +252,10 @@ export default function Home() {
     setAverage(samples.reduce((sum, value) => sum + value, 0) / samples.length);
     setPeak(peakRef.current);
     setOverSeconds(totalOverRef.current / 1000);
+    if (now - lastHistorySampleRef.current >= 100) {
+      lastHistorySampleRef.current = now;
+      setHistory((current) => [...current.slice(-299), { value: estimated, over: isOver }]);
+    }
 
     if (isOver) {
       if (thresholdAtRef.current === null) thresholdAtRef.current = now;
@@ -287,6 +294,7 @@ export default function Home() {
       analyserRef.current = analyser;
       smoothedRef.current = -100;
       lastFrameRef.current = performance.now();
+      lastHistorySampleRef.current = 0;
       thresholdAtRef.current = null;
       setStatus("running");
       try {
@@ -307,6 +315,7 @@ export default function Home() {
     setAverage(null);
     setPeak(null);
     setOverSeconds(0);
+    setHistory([]);
   };
 
   useEffect(() => () => {
@@ -318,6 +327,14 @@ export default function Home() {
   const meterPercent = db === null ? 0 : Math.max(0, Math.min(100, ((db - 30) / 90) * 100));
   const thresholdPercent = Math.max(0, Math.min(100, ((threshold - 30) / 90) * 100));
   const level = db !== null && db >= threshold ? "danger" : db !== null && db >= threshold - 10 ? "warning" : "success";
+  const chartWidth = 600;
+  const chartHeight = 180;
+  const chartY = (value: number) => chartHeight - Math.max(0, Math.min(1, (value - 30) / 90)) * chartHeight;
+  const chartPoints = history.map((point, index) => {
+    const x = ((300 - history.length + index) / 299) * chartWidth;
+    return `${x.toFixed(1)},${chartY(point.value).toFixed(1)}`;
+  }).join(" ");
+  const chartThresholdY = chartY(threshold);
 
   return (
     <main className="app-shell">
@@ -373,6 +390,25 @@ export default function Home() {
               <div><dt>{t.peak}</dt><dd dir="ltr">{peak === null ? "--" : `${peak.toFixed(1)} dB`}</dd></div>
               <div><dt>{t.overTime}</dt><dd dir="ltr">{overSeconds.toFixed(1)} {t.secondsShort}</dd></div>
             </dl>
+            <section className="history-monitor">
+              <div className="history-heading">
+                <h2>{language === "he" ? "30 השניות האחרונות" : "Last 30 seconds"}</h2>
+                <span>{language === "he" ? "קו הסף ונקודות החריגה מסומנים באדום" : "The threshold and exceedances are marked in red"}</span>
+              </div>
+              <div className="history-chart">
+                <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} role="img" aria-label={language === "he" ? "גרף עוצמת הרעש ב־30 השניות האחרונות" : "Noise level chart for the last 30 seconds"} preserveAspectRatio="none">
+                  <line className="history-grid" x1="0" x2={chartWidth} y1={chartY(60)} y2={chartY(60)} />
+                  <line className="history-grid" x1="0" x2={chartWidth} y1={chartY(90)} y2={chartY(90)} />
+                  <line className="history-threshold" x1="0" x2={chartWidth} y1={chartThresholdY} y2={chartThresholdY} />
+                  {chartPoints && <polyline className="history-line" points={chartPoints} />}
+                  {history.map((point, index) => point.over && (
+                    <circle className="history-exceedance" key={index} cx={((300 - history.length + index) / 299) * chartWidth} cy={chartY(point.value)} r="3" />
+                  ))}
+                </svg>
+                <div className="history-scale" aria-hidden="true"><span>120</span><span>90</span><span>60</span><span>30 dB</span></div>
+              </div>
+              <div className="history-time" dir="ltr"><span>−30 s</span><span>{language === "he" ? "עכשיו" : "now"}</span></div>
+            </section>
           </section>
 
           <section className="settings-panel">

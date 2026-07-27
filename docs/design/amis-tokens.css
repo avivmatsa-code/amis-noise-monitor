@@ -1,0 +1,20 @@
+/* AMIS Clear UI — Design Tokens v0.2 */
+:root {
+  --font-family-base: Arial, "Noto Sans Hebrew", sans-serif;
+  --font-size-xs: 13px; --font-size-sm: 14px; --font-size-md: 16px; --font-size-lg: 17px; --font-size-xl: 20px; --font-size-2xl: 28px;
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px; --space-12: 48px; --space-16: 64px;
+  --radius-sm: 4px; --radius-md: 6px; --radius-lg: 8px; --radius-pill: 999px;
+  --color-bg: #f5f7f9; --color-surface: #fff; --color-surface-subtle: #f9fafb; --color-text: #1f2933; --color-text-muted: #607080; --color-border: #d5dee6; --color-border-strong: #aebdca;
+  --color-success: #16834f; --color-success-bg: #edf7f1; --color-warning: #a86400; --color-warning-bg: #fff7e6; --color-danger: #c0363f; --color-danger-bg: #fff0f0; --color-info: #176fa5; --color-info-bg: #edf6fb;
+  --shadow-panel: 0 2px 8px rgba(15,35,55,.06); --shadow-floating: 0 8px 24px rgba(15,35,55,.12);
+  --control-height: 44px; --button-height: 44px; --table-row-height: 50px; --panel-header-height: 52px; --app-header-height: 70px;
+  --header-primary-button-border: rgba(255,255,255,.78); --header-primary-button-inner-outline: rgba(255,255,255,.18);
+  color-scheme: light;
+}
+:root,[data-theme="azure"] { --brand-primary:#0969c3;--brand-hover:#075aa8;--brand-active:#064b8d;--brand-accent:#35a3ff;--brand-subtle:#eaf5ff;--brand-border:#93c8f2;--focus-color:#0969c3; }
+[data-theme="turquoise"] { --brand-primary:#008c95;--brand-hover:#007780;--brand-active:#00636b;--brand-accent:#26c3c9;--brand-subtle:#e7f8f8;--brand-border:#84d3d6;--focus-color:#008c95; }
+[data-theme="emerald"] { --brand-primary:#00875a;--brand-hover:#00724c;--brand-active:#005e3e;--brand-accent:#29bd83;--brand-subtle:#e9f8f1;--brand-border:#8bd4b6;--focus-color:#00875a; }
+[data-theme="violet"] { --brand-primary:#7047c8;--brand-hover:#6039b1;--brand-active:#502f95;--brand-accent:#a27aff;--brand-subtle:#f2edff;--brand-border:#c0adf0;--focus-color:#7047c8; }
+[data-theme="raspberry"] { --brand-primary:#c52a68;--brand-hover:#aa2259;--brand-active:#8f1c4b;--brand-accent:#ee6798;--brand-subtle:#fdebf2;--brand-border:#eca3bf;--focus-color:#c52a68; }
+[data-theme="sunset"] { --brand-primary:#d95d20;--brand-hover:#bd4d18;--brand-active:#9f4014;--brand-accent:#ff914f;--brand-subtle:#fff0e7;--brand-border:#efb18d;--focus-color:#d95d20; }
+:root { --color-brand:var(--brand-primary);--color-brand-hover:var(--brand-hover);--color-brand-active:var(--brand-active);--color-brand-accent:var(--brand-accent);--color-brand-subtle:var(--brand-subtle);--color-brand-border:var(--brand-border);--color-link:var(--brand-primary);--color-focus:var(--focus-color); }

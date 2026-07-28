@@ -155,6 +155,7 @@ export default function Home() {
   const lastAlarmRef = useRef(-Infinity);
   const alarmPlayingRef = useRef(false);
   const lastHistorySampleRef = useRef(0);
+  const liveSettingsRef = useRef({ threshold, duration, cooldown, calibration, soundEnabled, vibrationEnabled });
 
   useEffect(() => {
     setTheme(loadTheme());
@@ -176,6 +177,10 @@ export default function Home() {
   }, [theme]);
 
   useEffect(() => {
+    liveSettingsRef.current = { threshold, duration, cooldown, calibration, soundEnabled, vibrationEnabled };
+  }, [threshold, duration, cooldown, calibration, soundEnabled, vibrationEnabled]);
+
+  useEffect(() => {
     document.documentElement.lang = language;
     document.documentElement.dir = language === "he" ? "rtl" : "ltr";
     localStorage.setItem("amis-noise-settings-v2", JSON.stringify({ threshold, duration, cooldown, calibration, soundEnabled, vibrationEnabled, language }));
@@ -185,8 +190,9 @@ export default function Home() {
     if (alarmPlayingRef.current) return;
     alarmPlayingRef.current = true;
     setStatus("alarm");
-    if (vibrationEnabled && navigator.vibrate) navigator.vibrate([250, 120, 250, 120, 500]);
-    if (soundEnabled) {
+    const { soundEnabled: playSound, vibrationEnabled: useVibration } = liveSettingsRef.current;
+    if (useVibration && navigator.vibrate) navigator.vibrate([250, 120, 250, 120, 500]);
+    if (playSound) {
       try {
         const ctx = audioContextRef.current && audioContextRef.current.state !== "closed"
           ? audioContextRef.current
@@ -209,7 +215,7 @@ export default function Home() {
       alarmPlayingRef.current = false;
       setStatus((current) => current === "alarm" ? "running" : current);
     }, 1300);
-  }, [soundEnabled, vibrationEnabled]);
+  }, []);
 
   const stop = useCallback(async () => {
     if (animationRef.current) cancelAnimationFrame(animationRef.current);
@@ -237,8 +243,14 @@ export default function Home() {
     const raw = rms > 0 ? 20 * Math.log10(rms) : -100;
     const alpha = raw > smoothedRef.current ? 0.35 : 0.12;
     smoothedRef.current += alpha * (raw - smoothedRef.current);
-    const estimated = smoothedRef.current + calibration;
-    const isOver = estimated >= threshold;
+    const {
+      calibration: currentCalibration,
+      threshold: currentThreshold,
+      duration: currentDuration,
+      cooldown: currentCooldown,
+    } = liveSettingsRef.current;
+    const estimated = smoothedRef.current + currentCalibration;
+    const isOver = estimated >= currentThreshold;
     const delta = now - lastFrameRef.current;
     lastFrameRef.current = now;
 
@@ -260,7 +272,7 @@ export default function Home() {
     if (isOver) {
       if (thresholdAtRef.current === null) thresholdAtRef.current = now;
       const continuous = now - thresholdAtRef.current;
-      if (continuous >= duration * 1000 && now - lastAlarmRef.current >= cooldown * 1000) {
+      if (continuous >= currentDuration * 1000 && now - lastAlarmRef.current >= currentCooldown * 1000) {
         lastAlarmRef.current = now;
         void triggerAlarm();
       } else if (!alarmPlayingRef.current) setStatus("waiting");
@@ -269,7 +281,7 @@ export default function Home() {
       if (!alarmPlayingRef.current) setStatus("running");
     }
     animationRef.current = requestAnimationFrame(measure);
-  }, [calibration, cooldown, duration, threshold, triggerAlarm]);
+  }, [triggerAlarm]);
 
   const start = async () => {
     setError("");
@@ -324,12 +336,12 @@ export default function Home() {
   }, []);
 
   const statusText = t[status];
-  const meterPercent = db === null ? 0 : Math.max(0, Math.min(100, ((db - 30) / 90) * 100));
-  const thresholdPercent = Math.max(0, Math.min(100, ((threshold - 30) / 90) * 100));
+  const meterPercent = db === null ? 0 : Math.max(0, Math.min(100, ((db - 15) / 85) * 100));
+  const thresholdPercent = Math.max(0, Math.min(100, ((threshold - 15) / 85) * 100));
   const level = db !== null && db >= threshold ? "danger" : db !== null && db >= threshold - 10 ? "warning" : "success";
   const chartWidth = 600;
   const chartHeight = 180;
-  const chartY = (value: number) => chartHeight - Math.max(0, Math.min(1, (value - 30) / 90)) * chartHeight;
+  const chartY = (value: number) => chartHeight - Math.max(0, Math.min(1, (value - 15) / 85)) * chartHeight;
   const chartPoints = history.map((point, index) => {
     const x = ((300 - history.length + index) / 299) * chartWidth;
     return `${x.toFixed(1)},${chartY(point.value).toFixed(1)}`;
@@ -372,6 +384,11 @@ export default function Home() {
 
         {error && <div className="message danger-message" role="alert">{error}</div>}
 
+        <div className="mobile-run-actions" aria-label={language === "he" ? "הפעלת המדידה" : "Measurement controls"}>
+          <button className="button-primary" disabled={running} onClick={start}>{t.start}</button>
+          <button className="button-secondary" disabled={!running} onClick={() => void stop()}>{t.stop}</button>
+        </div>
+
         <div className="main-grid">
           <section className={`meter-panel level-${level} ${status === "alarm" ? "is-alarm" : ""}`} aria-label={t.meterLabel}>
             <div className="status-line"><span className="status-mark" aria-hidden="true" /><strong>{statusText}</strong></div>
@@ -380,11 +397,11 @@ export default function Home() {
               <span className="db-unit">dB</span>
             </div>
             <p className="raw-value">{rawDb === null ? t.startHint : `${t.raw}: ${rawDb.toFixed(1)} dBFS`}</p>
-            <div className="meter-track" role="meter" aria-valuemin={30} aria-valuemax={120} aria-valuenow={db === null ? undefined : Math.round(db)}>
+            <div className="meter-track" role="meter" aria-valuemin={15} aria-valuemax={100} aria-valuenow={db === null ? undefined : Math.round(db)}>
               <span className="meter-fill" style={{ inlineSize: `${meterPercent}%` }} />
               <span className="threshold-mark" style={{ insetInlineStart: `${thresholdPercent}%` }} />
             </div>
-            <div className="scale" dir="ltr"><span>30</span><span>60</span><span>90</span><span>120 dB</span></div>
+            <div className="scale" dir="ltr"><span>15</span><span>40</span><span>70</span><span>100 dB</span></div>
             <dl className="stats">
               <div><dt>{t.average}</dt><dd dir="ltr">{average === null ? "--" : `${average.toFixed(1)} dB`}</dd></div>
               <div><dt>{t.peak}</dt><dd dir="ltr">{peak === null ? "--" : `${peak.toFixed(1)} dB`}</dd></div>
@@ -397,15 +414,15 @@ export default function Home() {
               </div>
               <div className="history-chart">
                 <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} role="img" aria-label={language === "he" ? "גרף עוצמת הרעש ב־30 השניות האחרונות" : "Noise level chart for the last 30 seconds"} preserveAspectRatio="none">
-                  <line className="history-grid" x1="0" x2={chartWidth} y1={chartY(60)} y2={chartY(60)} />
-                  <line className="history-grid" x1="0" x2={chartWidth} y1={chartY(90)} y2={chartY(90)} />
+                  <line className="history-grid" x1="0" x2={chartWidth} y1={chartY(40)} y2={chartY(40)} />
+                  <line className="history-grid" x1="0" x2={chartWidth} y1={chartY(70)} y2={chartY(70)} />
                   <line className="history-threshold" x1="0" x2={chartWidth} y1={chartThresholdY} y2={chartThresholdY} />
                   {chartPoints && <polyline className="history-line" points={chartPoints} />}
                   {history.map((point, index) => point.over && (
                     <circle className="history-exceedance" key={index} cx={((300 - history.length + index) / 299) * chartWidth} cy={chartY(point.value)} r="3" />
                   ))}
                 </svg>
-                <div className="history-scale" aria-hidden="true"><span>120</span><span>90</span><span>60</span><span>30 dB</span></div>
+                <div className="history-scale" aria-hidden="true"><span>100</span><span>70</span><span>40</span><span>15 dB</span></div>
               </div>
               <div className="history-time" dir="ltr"><span>−30 s</span><span>{language === "he" ? "עכשיו" : "now"}</span></div>
             </section>
@@ -415,7 +432,7 @@ export default function Home() {
             <h2>{t.settings}</h2>
             <div className="field">
               <label htmlFor="threshold">{t.threshold}<output dir="ltr">{threshold} dB</output></label>
-              <input id="threshold" type="range" min="40" max="110" value={threshold} onChange={(e) => setThreshold(Number(e.target.value))} />
+              <input id="threshold" type="range" min="15" max="100" value={threshold} onChange={(e) => setThreshold(Number(e.target.value))} />
             </div>
             <div className="two-fields">
               <div className="field">
@@ -437,8 +454,8 @@ export default function Home() {
               <label><input type="checkbox" checked={vibrationEnabled} onChange={(e) => setVibrationEnabled(e.target.checked)} />{t.vibration}</label>
             </div>
             <div className="actions">
-              <button className="button-primary" disabled={running} onClick={start}>{t.start}</button>
-              <button className="button-secondary" disabled={!running} onClick={() => void stop()}>{t.stop}</button>
+              <button className="button-primary run-action" disabled={running} onClick={start}>{t.start}</button>
+              <button className="button-secondary run-action" disabled={!running} onClick={() => void stop()}>{t.stop}</button>
               <button className="button-secondary" onClick={() => void triggerAlarm()}>{t.test}</button>
               <button className="button-text" onClick={reset}>{t.reset}</button>
             </div>

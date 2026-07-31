@@ -47,10 +47,10 @@ const copy = {
     sound: "התרעה קולית",
     vibration: "רטט במכשיר נתמך",
     flash: "הבהוב מסך בעת חריגה",
-    autoCalibration: "כיול אוטומטי",
-    autoCalibrating: "מכייל במשך 3 שניות…",
-    autoCalibrationHint: "מומלץ להפעיל רק כאשר יש שקט מוחלט. הכיול יקבע את רעש הרקע לכ־30 dB משוער.",
-    autoCalibrationDone: "הכיול האוטומטי הושלם והוחל בזמן אמת.",
+    autoCalibration: "איפוס רעש רקע",
+    autoCalibrating: "מודד רעש רקע במשך 3 שניות…",
+    autoCalibrationHint: "יש להפעיל רק כאשר יש שקט מוחלט. האיפוס יקבע את רעש הרקע לכ־10 dB משוער.",
+    autoCalibrationDone: "איפוס רעש הרקע הושלם והוחל בזמן אמת.",
     start: "התחלת מדידה",
     stop: "עצירה",
     test: "בדיקת התרעה",
@@ -100,10 +100,10 @@ const copy = {
     sound: "Sound alert",
     vibration: "Vibration on supported devices",
     flash: "Flash screen on threshold alert",
-    autoCalibration: "Automatic calibration",
-    autoCalibrating: "Calibrating for 3 seconds…",
-    autoCalibrationHint: "Use only in complete silence. Calibration will set the background level to approximately 30 dB.",
-    autoCalibrationDone: "Automatic calibration is complete and active in real time.",
+    autoCalibration: "Reset background noise",
+    autoCalibrating: "Measuring background noise for 3 seconds…",
+    autoCalibrationHint: "Use only in complete silence. The reset will set the background level to approximately 10 dB.",
+    autoCalibrationDone: "Background noise reset is complete and active in real time.",
     start: "Start measurement",
     stop: "Stop",
     test: "Test alert",
@@ -354,7 +354,7 @@ export default function Home() {
       const stableSamples = sorted.slice(trim, sorted.length - trim || sorted.length);
       if (stableSamples.length > 0) {
         const baseline = stableSamples.reduce((sum, value) => sum + value, 0) / stableSamples.length;
-        const nextCalibration = Math.max(50, Math.min(140, 30 - baseline));
+        const nextCalibration = Math.max(0, Math.min(140, 10 - baseline));
         liveSettingsRef.current.calibration = nextCalibration;
         setCalibration(Number(nextCalibration.toFixed(1)));
         setCalibrationDone(true);
@@ -495,7 +495,7 @@ export default function Home() {
             </div>
             <div className="field calibration-field">
               <label htmlFor="calibration">{t.calibration}</label>
-              <input id="calibration" type="number" min="50" max="140" step=".1" value={calibration} onChange={(e) => { setCalibrationDone(false); setCalibration(Number(e.target.value)); }} dir="ltr" />
+              <input id="calibration" type="number" min="0" max="140" step=".1" value={calibration} onChange={(e) => { setCalibrationDone(false); setCalibration(Number(e.target.value)); }} dir="ltr" />
               <small>{t.calibrationHint}</small>
               <button className="button-secondary auto-calibration-button" disabled={!running || autoCalibrating} onClick={startAutoCalibration}>
                 {autoCalibrating ? t.autoCalibrating : t.autoCalibration}

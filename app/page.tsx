@@ -46,6 +46,11 @@ const copy = {
     calibrationHint: "הערך המוצג מחושב לפי dBFS שנמדד בתוספת היסט הכיול.",
     sound: "התרעה קולית",
     vibration: "רטט במכשיר נתמך",
+    flash: "הבהוב מסך בעת חריגה",
+    autoCalibration: "כיול אוטומטי",
+    autoCalibrating: "מכייל במשך 3 שניות…",
+    autoCalibrationHint: "מומלץ להפעיל רק כאשר יש שקט מוחלט. הכיול יקבע את רעש הרקע לכ־30 dB משוער.",
+    autoCalibrationDone: "הכיול האוטומטי הושלם והוחל בזמן אמת.",
     start: "התחלת מדידה",
     stop: "עצירה",
     test: "בדיקת התרעה",
@@ -94,6 +99,11 @@ const copy = {
     calibrationHint: "The displayed value is calculated as measured dBFS plus the calibration offset.",
     sound: "Sound alert",
     vibration: "Vibration on supported devices",
+    flash: "Flash screen on threshold alert",
+    autoCalibration: "Automatic calibration",
+    autoCalibrating: "Calibrating for 3 seconds…",
+    autoCalibrationHint: "Use only in complete silence. Calibration will set the background level to approximately 30 dB.",
+    autoCalibrationDone: "Automatic calibration is complete and active in real time.",
     start: "Start measurement",
     stop: "Stop",
     test: "Test alert",
@@ -137,6 +147,9 @@ export default function Home() {
   const [calibration, setCalibration] = useState(65);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [vibrationEnabled, setVibrationEnabled] = useState(true);
+  const [flashEnabled, setFlashEnabled] = useState(true);
+  const [autoCalibrating, setAutoCalibrating] = useState(false);
+  const [calibrationDone, setCalibrationDone] = useState(false);
   const [error, setError] = useState("");
   const running = status === "running" || status === "waiting" || status === "alarm";
   const t = copy[language];
@@ -155,7 +168,10 @@ export default function Home() {
   const lastAlarmRef = useRef(-Infinity);
   const alarmPlayingRef = useRef(false);
   const lastHistorySampleRef = useRef(0);
-  const liveSettingsRef = useRef({ threshold, duration, cooldown, calibration, soundEnabled, vibrationEnabled });
+  const liveSettingsRef = useRef({ threshold, duration, cooldown, calibration, soundEnabled, vibrationEnabled, flashEnabled });
+  const autoCalibratingRef = useRef(false);
+  const autoCalibrationSamplesRef = useRef<number[]>([]);
+  const autoCalibrationTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     setTheme(loadTheme());
@@ -167,6 +183,7 @@ export default function Home() {
       if (Number.isFinite(saved.calibration)) setCalibration(saved.calibration);
       if (typeof saved.soundEnabled === "boolean") setSoundEnabled(saved.soundEnabled);
       if (typeof saved.vibrationEnabled === "boolean") setVibrationEnabled(saved.vibrationEnabled);
+      if (typeof saved.flashEnabled === "boolean") setFlashEnabled(saved.flashEnabled);
       if (saved.language === "en") setLanguage("en");
     } catch {}
   }, []);
@@ -177,14 +194,14 @@ export default function Home() {
   }, [theme]);
 
   useEffect(() => {
-    liveSettingsRef.current = { threshold, duration, cooldown, calibration, soundEnabled, vibrationEnabled };
-  }, [threshold, duration, cooldown, calibration, soundEnabled, vibrationEnabled]);
+    liveSettingsRef.current = { threshold, duration, cooldown, calibration, soundEnabled, vibrationEnabled, flashEnabled };
+  }, [threshold, duration, cooldown, calibration, soundEnabled, vibrationEnabled, flashEnabled]);
 
   useEffect(() => {
     document.documentElement.lang = language;
     document.documentElement.dir = language === "he" ? "rtl" : "ltr";
-    localStorage.setItem("amis-noise-settings-v2", JSON.stringify({ threshold, duration, cooldown, calibration, soundEnabled, vibrationEnabled, language }));
-  }, [language, threshold, duration, cooldown, calibration, soundEnabled, vibrationEnabled]);
+    localStorage.setItem("amis-noise-settings-v2", JSON.stringify({ threshold, duration, cooldown, calibration, soundEnabled, vibrationEnabled, flashEnabled, language }));
+  }, [language, threshold, duration, cooldown, calibration, soundEnabled, vibrationEnabled, flashEnabled]);
 
   const triggerAlarm = useCallback(async () => {
     if (alarmPlayingRef.current) return;
@@ -229,6 +246,11 @@ export default function Home() {
     try { await wakeLockRef.current?.release(); } catch {}
     wakeLockRef.current = null;
     thresholdAtRef.current = null;
+    if (autoCalibrationTimerRef.current !== null) window.clearTimeout(autoCalibrationTimerRef.current);
+    autoCalibrationTimerRef.current = null;
+    autoCalibratingRef.current = false;
+    autoCalibrationSamplesRef.current = [];
+    setAutoCalibrating(false);
     setStatus("stopped");
   }, []);
 
@@ -256,6 +278,7 @@ export default function Home() {
 
     setDb(estimated);
     setRawDb(smoothedRef.current);
+    if (autoCalibratingRef.current) autoCalibrationSamplesRef.current.push(smoothedRef.current);
     const samples = samplesRef.current;
     samples.push(estimated);
     if (samples.length > 300) samples.shift();
@@ -319,6 +342,30 @@ export default function Home() {
     }
   };
 
+  const startAutoCalibration = () => {
+    if (!running || autoCalibrating) return;
+    setCalibrationDone(false);
+    setAutoCalibrating(true);
+    autoCalibratingRef.current = true;
+    autoCalibrationSamplesRef.current = [];
+    autoCalibrationTimerRef.current = window.setTimeout(() => {
+      const sorted = [...autoCalibrationSamplesRef.current].sort((a, b) => a - b);
+      const trim = Math.floor(sorted.length * 0.1);
+      const stableSamples = sorted.slice(trim, sorted.length - trim || sorted.length);
+      if (stableSamples.length > 0) {
+        const baseline = stableSamples.reduce((sum, value) => sum + value, 0) / stableSamples.length;
+        const nextCalibration = Math.max(50, Math.min(140, 30 - baseline));
+        liveSettingsRef.current.calibration = nextCalibration;
+        setCalibration(Number(nextCalibration.toFixed(1)));
+        setCalibrationDone(true);
+      }
+      autoCalibratingRef.current = false;
+      autoCalibrationSamplesRef.current = [];
+      autoCalibrationTimerRef.current = null;
+      setAutoCalibrating(false);
+    }, 3000);
+  };
+
   const reset = () => {
     samplesRef.current = [];
     peakRef.current = -Infinity;
@@ -332,6 +379,7 @@ export default function Home() {
 
   useEffect(() => () => {
     if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    if (autoCalibrationTimerRef.current !== null) window.clearTimeout(autoCalibrationTimerRef.current);
     streamRef.current?.getTracks().forEach((track) => track.stop());
   }, []);
 
@@ -350,6 +398,7 @@ export default function Home() {
 
   return (
     <main className="app-shell">
+      {status === "alarm" && flashEnabled && <div className="flash-overlay" aria-hidden="true" />}
       <header className="app-header">
         <div className="header-inner">
           <div className="identity">
@@ -446,12 +495,19 @@ export default function Home() {
             </div>
             <div className="field calibration-field">
               <label htmlFor="calibration">{t.calibration}</label>
-              <input id="calibration" type="number" min="50" max="140" step=".1" value={calibration} onChange={(e) => setCalibration(Number(e.target.value))} dir="ltr" />
+              <input id="calibration" type="number" min="50" max="140" step=".1" value={calibration} onChange={(e) => { setCalibrationDone(false); setCalibration(Number(e.target.value)); }} dir="ltr" />
               <small>{t.calibrationHint}</small>
+              <button className="button-secondary auto-calibration-button" disabled={!running || autoCalibrating} onClick={startAutoCalibration}>
+                {autoCalibrating ? t.autoCalibrating : t.autoCalibration}
+              </button>
+              <small className={calibrationDone ? "success-text" : ""} role="status">
+                {calibrationDone ? t.autoCalibrationDone : t.autoCalibrationHint}
+              </small>
             </div>
             <div className="toggles">
               <label><input type="checkbox" checked={soundEnabled} onChange={(e) => setSoundEnabled(e.target.checked)} />{t.sound}</label>
               <label><input type="checkbox" checked={vibrationEnabled} onChange={(e) => setVibrationEnabled(e.target.checked)} />{t.vibration}</label>
+              <label><input type="checkbox" checked={flashEnabled} onChange={(e) => setFlashEnabled(e.target.checked)} />{t.flash}</label>
             </div>
             <div className="actions">
               <button className="button-primary run-action" disabled={running} onClick={start}>{t.start}</button>
